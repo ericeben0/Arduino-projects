@@ -56,11 +56,14 @@ void loop() {
 
   Serial.println(F("Playing track 2 (0002.mp3)..."));
   myDFPlayer.play(2);
-  delay(5000);
+  delay(4000);
+
+myDFPlayer.volume(28);  // Volume range: 0 (mute) to 30 (max)
+  delay(500);
 
   Serial.println(F("Playing track 3 (0003.mp3)..."));
   myDFPlayer.play(3);
-  delay(5000);
+  delay(60000);
 
   Serial.println(F("Cycle complete. Pausing before repeat..."));
   delay(3000);
