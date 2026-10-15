@@ -7,11 +7,13 @@
 #define DATA_PIN_A     5   // strip A: HC-SR04
 #define DATA_PIN_B     6   // strip B: LD2410
 
-// ---------- LED setup ----------
+// ---------- LED setup (12V WS2811) ----------
+// NUM_LEDS = number of WS2811 ICs ("pixels"), NOT individual LEDs.
+// Most 12V WS2811 strips put 3 LEDs on each IC, so 30 pixels = 90 LEDs.
 #define NUM_LEDS_A     30
 #define NUM_LEDS_B     30
-#define BRIGHTNESS     120          // 0-255
-#define MAX_AMPS_MA    3000         // total cap for both strips
+#define BRIGHTNESS     120          // 0-255; main power limiter (see wiring notes)
+#define COLOR_ORDER    RGB          // try BRG or GRB if colors look wrong
 
 CRGB ledsA[NUM_LEDS_A];
 CRGB ledsB[NUM_LEDS_B];
@@ -57,10 +59,10 @@ void setup() {
   pinMode(PIN_US_ECHO, INPUT);
   pinMode(PIN_RADAR_OUT, INPUT);
 
-  FastLED.addLeds<WS2812B, DATA_PIN_A, GRB>(ledsA, NUM_LEDS_A);
-  FastLED.addLeds<WS2812B, DATA_PIN_B, GRB>(ledsB, NUM_LEDS_B);
+  FastLED.addLeds<WS2811, DATA_PIN_A, COLOR_ORDER>(ledsA, NUM_LEDS_A);
+  FastLED.addLeds<WS2811, DATA_PIN_B, COLOR_ORDER>(ledsB, NUM_LEDS_B);
   FastLED.setBrightness(BRIGHTNESS);
-  FastLED.setMaxPowerInVoltsAndMilliamps(5, MAX_AMPS_MA);
+  // FastLED power limiting is omitted: it models 5V pixels, not 12V strips.
   FastLED.clear(true);
 }
 
