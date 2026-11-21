@@ -5,8 +5,9 @@
   it collides with FastLED over Timer1 and causes a __vector_11 linker error)
 
   Behavior:
-    STANDBY  From power-up, 3 LEDs flash white and red while the MAX9814
-             microphone on A0 listens for a voice.
+    STANDBY  From power-up, 3 LEDs flash white and red. The microphone is
+             not armed for the first 20 seconds after power-on; after that
+             the MAX9814 on A0 listens for a voice.
 
     TRIGGER  When sound stays above VOICE_THRESHOLD in enough recent 50ms
              windows (a sustained burst like speech, not a single clap),
@@ -16,7 +17,8 @@
                t = 0s   buzzer ON, angry pattern starts on the 25-LED string
                t = 5s   servo begins 4 full-range sweeps (to max, then to min,
                         4 times), then returns to center
-               t = 30s  buzzer OFF, angry pattern ends, whole string goes solid red
+               t = 15s  buzzer OFF (angry pattern keeps running)
+               t = 30s  angry pattern ends, whole string goes solid red
                t = 60s  string fades out, short cooldown, back to STANDBY
 
     Everything during the trigger runs at the same time (LEDs, buzzer, servo)
@@ -50,10 +52,11 @@
 
 // ---------- Buzzer configuration ----------
 #define BUZZER_PIN          7
+#define BUZZER_ON_MS    15000UL   // buzzer runs for the first 15 seconds after trigger
 
 // ---------- Triggered-sequence timing ----------
-#define ANGRY_PHASE_MS  30000UL   // angry pattern + buzzer: first 30 seconds
-#define RED_PHASE_MS    30000UL   // solid red, buzzer off: next 30 seconds
+#define ANGRY_PHASE_MS  30000UL   // angry pattern: first 30 seconds
+#define RED_PHASE_MS    30000UL   // solid red: next 30 seconds
 
 // ---------- Servo configuration ----------
 #define SERVO_PIN           9
@@ -72,6 +75,7 @@
 #define WINDOWS_TRACKED      6    // how many recent windows to remember
 #define WINDOWS_REQUIRED     3    // how many of those must be loud to trigger
 #define COOLDOWN_MS       1500    // extra quiet time after the sequence ends
+#define ARM_DELAY_MS     20000UL  // microphone ignored for this long after power-on
 
 #define DEBUG_SERIAL         1    // 1 = print mic levels to Serial Monitor (set to 0 when the DFPlayer uses pins 0/1)
 
@@ -118,6 +122,11 @@ void setup() {
 
 void loop() {
   updateStandbyFlasher();
+
+  // Not armed yet: keep flashing the standby LEDs but ignore the microphone
+  if (millis() < ARM_DELAY_MS) {
+    return;
+  }
 
   int level = measurePeakToPeak();
 
@@ -168,17 +177,22 @@ void runTriggeredSequence() {
   servoLastTick = t0;
 
   digitalWrite(BUZZER_PIN, HIGH);   // buzzer on at trigger
+  bool buzzerStopped = false;
   bool redPhaseStarted = false;
 
   while (millis() - t0 < ANGRY_PHASE_MS + RED_PHASE_MS) {
     unsigned long elapsed = millis() - t0;
 
+    if (!buzzerStopped && elapsed >= BUZZER_ON_MS) {
+      buzzerStopped = true;
+      digitalWrite(BUZZER_PIN, LOW);               // buzzer off at 15s
+    }
+
     if (elapsed < ANGRY_PHASE_MS) {
       updateAngryPattern();
     } else if (!redPhaseStarted) {
       redPhaseStarted = true;
-      digitalWrite(BUZZER_PIN, LOW);               // buzzer off at 30s
-      fill_solid(leds, NUM_LEDS, CRGB::Red);       // strip goes solid red
+      fill_solid(leds, NUM_LEDS, CRGB::Red);       // strip goes solid red at 30s
       FastLED.show();
     }
 
