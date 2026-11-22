@@ -17,9 +17,11 @@
                t = 0s   buzzer ON, angry pattern starts on the 25-LED string
                t = 5s   servo begins 4 full-range sweeps (to max, then to min,
                         4 times), then returns to center
-               t = 15s  buzzer OFF (angry pattern keeps running)
+               t = 10s  buzzer OFF (angry pattern keeps running)
                t = 30s  angry pattern ends, whole string goes solid red
-               t = 60s  string fades out, short cooldown, back to STANDBY
+               t = 60s  string fades out and the unit goes idle. It does NOT
+                        re-arm: the trigger is one-shot and only re-arms
+                        when power is cycled (or the Nano is reset).
 
     Everything during the trigger runs at the same time (LEDs, buzzer, servo)
     using millis() timing -- nothing blocks anything else.
@@ -52,7 +54,7 @@
 
 // ---------- Buzzer configuration ----------
 #define BUZZER_PIN          7
-#define BUZZER_ON_MS    15000UL   // buzzer runs for the first 15 seconds after trigger
+#define BUZZER_ON_MS    10000UL   // buzzer runs for the first 10 seconds after trigger
 
 // ---------- Triggered-sequence timing ----------
 #define ANGRY_PHASE_MS  30000UL   // angry pattern: first 30 seconds
@@ -74,7 +76,6 @@
 #define VOICE_THRESHOLD     100   // peak-to-peak ADC counts (0-1023); tune this
 #define WINDOWS_TRACKED      6    // how many recent windows to remember
 #define WINDOWS_REQUIRED     3    // how many of those must be loud to trigger
-#define COOLDOWN_MS       1500    // extra quiet time after the sequence ends
 #define ARM_DELAY_MS     20000UL  // microphone ignored for this long after power-on
 
 #define DEBUG_SERIAL         1    // 1 = print mic levels to Serial Monitor (set to 0 when the DFPlayer uses pins 0/1)
@@ -82,6 +83,7 @@
 // ---------- Globals ----------
 CRGB leds[NUM_LEDS];
 uint8_t voiceHistory = 0;            // bit history of recent windows, 1 = loud
+bool sequenceDone = false;           // set after the sequence runs; cleared only by power-up/reset
 
 // Standby flasher state
 unsigned long lastStandbyToggle = 0;
@@ -121,6 +123,12 @@ void setup() {
 }
 
 void loop() {
+  // One-shot: after the sequence has run, do nothing until power is cycled
+  if (sequenceDone) {
+    delay(100);
+    return;
+  }
+
   updateStandbyFlasher();
 
   // Not armed yet: keep flashing the standby LEDs but ignore the microphone
@@ -140,8 +148,7 @@ void loop() {
 
   if (__builtin_popcount(voiceHistory) >= WINDOWS_REQUIRED) {
     runTriggeredSequence();
-    voiceHistory = 0;            // start fresh after the sequence
-    lastStandbyToggle = millis();
+    sequenceDone = true;         // never re-arm; only a power cycle or reset clears this
   }
 }
 
@@ -185,7 +192,7 @@ void runTriggeredSequence() {
 
     if (!buzzerStopped && elapsed >= BUZZER_ON_MS) {
       buzzerStopped = true;
-      digitalWrite(BUZZER_PIN, LOW);               // buzzer off at 15s
+      digitalWrite(BUZZER_PIN, LOW);               // buzzer off at 10s
     }
 
     if (elapsed < ANGRY_PHASE_MS) {
@@ -201,7 +208,6 @@ void runTriggeredSequence() {
 
   digitalWrite(BUZZER_PIN, LOW);   // safety: make sure it is off
   fadeToBlackAll(20, 10);
-  delay(COOLDOWN_MS);
 }
 
 // ================= ANGRY: hot, sharp, erratic (non-blocking, loops continuously) =================
