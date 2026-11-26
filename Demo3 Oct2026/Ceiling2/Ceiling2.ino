@@ -1,12 +1,18 @@
 /*
-  Sound-Triggered LEDs + DFPlayer Mini, 3 Tracks (Arduino Nano)
-  --------------------------------------------------------------
+  Sound-Triggered LEDs + DFPlayer Mini, 3 Tracks (Arduino Nano) - v2
+  -------------------------------------------------------------------
   1. Power-up / idle: first 5 LEDs flash white and green.
-  2. MAX9814 hears a sound: DFPlayer plays track 1, then track 2
-     (LEDs dark during these two tracks).
+  2. MAX9814 hears a LOUD, SUSTAINED sound (a loud voice): DFPlayer
+     plays track 1, then track 2 (LEDs dark during these two tracks).
   3. Track 3 plays while the full 100-LED strip flashes a blue and
      white pattern, with only 30 LEDs lit at any one moment.
   4. When track 3 ends, returns to idle and listens again.
+
+  CHANGES IN v2
+    - Higher SOUND_THRESHOLD (250)
+    - Sound must stay above the threshold for REQUIRED_HITS
+      consecutive sample windows (3 x 50 ms = ~150 ms) before it
+      triggers, so short soft blips and background noise are ignored.
 
   WIRING
     WS2812 strip DIN  -> Nano D6 (through a ~330 ohm resistor)
@@ -17,18 +23,14 @@
     MAX9814 VDD       -> Nano 3V3 (5V also works)
     MAX9814 GND       -> Nano GND
     MAX9814 OUT       -> Nano A0
+    MAX9814 GAIN      -> VDD (lowest gain, 40dB)
 
-    DFPlayer VCC      -> Nano 5V
+    DFPlayer VCC      -> Nano 5V (or separate 5V supply)
     DFPlayer GND      -> Nano GND
     DFPlayer TX       -> Nano D10 (Nano receives here)
-    DFPlayer RX       -> Nano D11 via ~1k resistor (Nano transmits here)
-    DFPlayer BUSY     -> Nano D2  (NEW: goes LOW while a track is playing)
+    DFPlayer RX       -> Nano D11 via ~1k resistor (REQUIRED: prevents crackle)
+    DFPlayer BUSY     -> Nano D2  (goes LOW while a track is playing)
     DFPlayer SPK_1/2  -> small speaker
-
-  WHY THE BUSY PIN: FastLED briefly disables interrupts every time it
-  updates 100 LEDs, which can make SoftwareSerial miss the DFPlayer's
-  "track finished" message. The BUSY pin is a plain wire, so it can't
-  be missed.
 
   SD CARD: FAT32, files 0001.mp3, 0002.mp3, 0003.mp3 in the root folder.
 
@@ -54,9 +56,10 @@
 #define IDLE_FLASH_MS    400    // idle flash speed
 #define SHOW_FRAME_MS    120    // blue/white frame speed
 
-// ---------- Sound settings ----------
+// ---------- Sound settings (TUNE THESE) ----------
 #define SAMPLE_WINDOW_MS 50     // peak-to-peak sampling window
-#define SOUND_THRESHOLD  150    // raise if it false-triggers, lower if it misses
+#define SOUND_THRESHOLD  250    // max useful value is ~400; raise to be less sensitive
+#define REQUIRED_HITS    3      // consecutive loud windows needed (3 x 50 ms)
 #define PRINT_LEVELS     true   // prints sound level to Serial Monitor for tuning
 #define COOLDOWN_MS      2000   // ignore sound after the show (speaker echo)
 
@@ -177,15 +180,23 @@ void setup() {
 
 // ---------------------------------------------------------------
 void loop() {
+  static int hits = 0;   // consecutive loud sample windows
+
   showIdleFlash();
 
   int level = readSoundLevel();
   if (PRINT_LEVELS) {
     Serial.print(F("Sound level: "));
-    Serial.println(level);
+    Serial.print(level);
+    Serial.print(F("  hits: "));
+    Serial.println(hits);
   }
 
-  if (level >= SOUND_THRESHOLD) {
+  if (level >= SOUND_THRESHOLD) hits++;
+  else hits = 0;
+
+  if (hits >= REQUIRED_HITS) {
+    hits = 0;
     Serial.println(F("Sound detected!"));
 
     FastLED.clear();
